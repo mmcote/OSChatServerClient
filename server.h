@@ -13,6 +13,10 @@
 #include <pthread.h>
 #include <semaphore.h>
 
+#include <signal.h>
+#include <errno.h>
+#include <sys/user.h>
+
 #define WHITEBOARDSIZE 38
 #define MAXCHARS 256
 #define MAXUSERS 10
@@ -43,6 +47,9 @@ typedef struct
 // Create a global whiteboard that the server operates on
 WhiteBoard * whiteBoard;
 
+FILE *logFile = NULL;
+FILE *whiteBoardFile = NULL;
+
 struct sockaddr_in serverAddr;
 int serverFD, clientFD;
 
@@ -52,6 +59,8 @@ sem_t numClientsSem;
 pthread_t interruptThread;
 
 WhiteBoard * create(int numMessagesRequested);
+void sigtermViolationHandler(int signal_num);
+void savefile();
 void connectionMessage(int * clientFD);
 void sendInfo(int *clientFD, char * response);
 void closeConnection();

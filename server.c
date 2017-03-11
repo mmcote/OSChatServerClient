@@ -21,6 +21,92 @@ WhiteBoard * createWhiteBoard(int numMessagesRequested)
     return templateWhiteBoard;
 }
 
+void sigtermViolationHandler(int signal_num)
+{
+    savefile();
+    closeConnection();
+    exit(-1);
+}
+
+void daemonizeProcess()
+{
+    pid_t pid = 0;
+    pid_t sid = 0;
+
+    pid = fork();
+
+    if (pid < 0)
+    {
+        printf("fork failed!\n");
+        exit(1);
+    }
+
+    if (pid > 0)
+    {
+        // in the parent
+        printf("pid of child process %d \n", pid);
+        exit(0);
+    }
+
+    umask(0);
+
+	// open a log file
+    logFile = fopen ("logfile.log", "w+");
+    if(!logFile){
+    	printf("cannot open log file");
+    }
+
+    // open the whiteBoard file
+    whiteBoardFile = fopen ("whiteboard.all", "w+");
+    if(!whiteBoardFile){
+    	printf("cannot open whiteboard.all file");
+    }
+
+    // create new process group -- don't want to look like an orphan
+    sid = setsid();
+    if(sid < 0)
+    {
+        fprintf(logFile, "cannot create new process group");
+        exit(1);
+    }
+
+    /* Change the current working directory */
+    if ((chdir("/")) < 0) {
+        printf("Could not change working directory to /\n");
+        exit(1);
+    }
+
+	// close standard fds
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    fclose(logFile);
+}
+
+
+
+void savefile()
+{
+    int numMessages = whiteBoard->numMessages;
+    if(!whiteBoardFile){
+    	printf("cannot open whiteboard save file");
+    }
+    fprintf(whiteBoardFile,"%d\n", numMessages);
+    int i = 0;
+    for(; i < numMessages; ++i)
+    {
+        fprintf(whiteBoardFile,"%d\n",whiteBoard->encrypted[i]);
+        fprintf(whiteBoardFile,"%d\n",whiteBoard->messageLen[i]);
+        if(whiteBoard->messageLen[i]!=0)
+        {
+            fprintf(whiteBoardFile,"%s\n",whiteBoard->messages[i]);
+        }
+    }
+    fflush(whiteBoardFile);
+    fclose(whiteBoardFile);
+}
+
 void connectionMessage(int * clientFD)
 {
     // Create the connection message.
@@ -180,6 +266,7 @@ void readCRUD(int * clientFD, char * entryNumStr)
     // If 0 length: !12p0\n\n
 
     int entryIndex = atoi(entryNumStr);
+    entryIndex -= 1;
     char messageLengthStr[4];
     bzero(messageLengthStr, 4);
     sprintf(messageLengthStr, "%d", whiteBoard->messageLen[entryIndex]);
@@ -212,6 +299,9 @@ void updateCRUD(int * clientFD, char * entryNumStr, char * message)
         sendInfo(clientFD, errorBuffer);
         return;
     }
+
+    // The message may be indexed by one but the array is still zero indexed
+    entryIndex -= 1;
 
     int messageLength = strlen(message);
     if (messageLength > MAXCHARS)
@@ -311,6 +401,13 @@ void * recieve(void * clientFD)
 
 int main(int argc, char **argv)
 {
+    // create sigaction for handling SIGSEGV
+    struct sigaction sigtermViolationAction;
+    sigtermViolationAction.sa_handler = sigtermViolationHandler;
+    sigemptyset(&sigtermViolationAction.sa_mask);
+    sigtermViolationAction.sa_flags = 0;
+    sigaction(SIGTERM, &sigtermViolationAction, 0);
+
     whiteBoard = createWhiteBoard(WHITEBOARDSIZE);
     
     // Create the clients list and initialize semaphores
@@ -362,11 +459,14 @@ int main(int argc, char **argv)
 
     createSocket();
     bindSocket(portNo);
+
+    // Make sure we are able to establish the socket before daemonizeProcess
+    daemonizeProcess();
+
     while(1)
     {
         listenForConnections();
         acceptConnections();
     }
-    closeConnection();
     return 0;
 }
