@@ -21,10 +21,28 @@ WhiteBoard * createWhiteBoard(int numMessagesRequested)
     return templateWhiteBoard;
 }
 
+void disconnectUsers()
+{
+    while (clientNodeHead != NULL)
+    {
+        fprintf(logFile, "%d\n", *clientNodeHead->fd);
+
+        // Currently the clients only have one thread where
+        // they are sending so they cannot listen all the time
+        // hense they will be unaware of being disconnected
+
+        close(*clientNodeHead->fd);
+        clientNodeHead = remove_front(clientNodeHead);
+    }
+}
+
 void sigtermViolationHandler(int signal_num)
 {
-    savefile();
+    disconnectUsers();
+    saveWhiteBoard();
     closeConnection();
+    fclose(logFile);
+
     exit(-1);
 }
 
@@ -80,13 +98,9 @@ void daemonizeProcess()
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
-
-    fclose(logFile);
 }
 
-
-
-void savefile()
+void saveWhiteBoard()
 {
     int numMessages = whiteBoard->numMessages;
     if(!whiteBoardFile){
@@ -105,6 +119,25 @@ void savefile()
     }
     fflush(whiteBoardFile);
     fclose(whiteBoardFile);
+}
+
+void loadWhiteBoard(char * stateFile)
+{
+    // Instead of using the whiteBoardFile we are going to create a new
+    // whiteboard pointer as the assignment strictly says dump to the new
+    // whiteboard file
+
+    FILE *priorWhiteBoardFile;
+    priorWhiteBoardFile = fopen(stateFile, "r");
+    if(!priorWhiteBoardFile){
+    	printf("Cannot open stateFile given, %s", stateFile);
+        exit(-1);
+    }
+    int tempInt;
+    fscanf(priorWhiteBoardFile, "%d", &tempInt);
+    whiteBoard = createWhiteBoard(tempInt);
+
+    fclose(priorWhiteBoardFile);
 }
 
 void connectionMessage(int * clientFD)
@@ -154,13 +187,13 @@ void bindSocket(int portNoRequested)
 {
     // Clear the serverAddr structure
     bzero(&serverAddr,sizeof(serverAddr));
-    
+
     // Converting the given port number into network format
     // (Host byte order to network byte order)
     serverAddr.sin_port = htons(portNoRequested);
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    
+
     // Give serverFD all the details inserted into the serverAddr
     if (bind(serverFD, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) == -1)
     {
@@ -186,11 +219,12 @@ void acceptConnections()
     // There will be many clients so they don't need to be global
     struct sockaddr_in clientAddr;
     int clientLength = sizeof(clientAddr);
-    
+
     // returns  a  new  file  descriptor referring to the client socket
     // (Creating a new socket for that specific client)
     clientFD = accept (serverFD, (struct sockaddr*) &clientAddr, &clientLength);
-    if (clientFD < 0) 
+    fprintf(logFile, "This is the next clientFD: %d\n", clientFD);
+    if (clientFD < 0)
     {
         perror ("Server: accept failed");
         exit (1);
@@ -206,15 +240,15 @@ void acceptConnections()
     // convert IPv4 and IPv6 addresses from binary to text form
     inet_ntop(AF_INET, &clientAddr.sin_addr.s_addr, clientIP, sizeof(clientIP));
     clientPort = htonl (clientAddr.sin_port);
-    
-    // increment the number of clients currently subscribed 
+
+    // increment the number of clients currently subscribed
     sem_wait(&numClientsSem);
     numClients++;
     sem_post(&numClientsSem);
-    
+
     ClientNode * currentCLientNode = NULL;
     pthread_t clientThreadID;
-    
+
     sem_wait(&clientLLSem);
     if (clientNodeHead != NULL)
     {
@@ -242,7 +276,7 @@ void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageL
     // printf("INPUTMESSAGELEN: %d", messageLength);
     // lenStore = messageLength;
     whiteBoard->messageLen[entryIndex] = messageLength;
-    
+
     char messageLengthStr[4];
     bzero(messageLengthStr, 4);
     sprintf(messageLengthStr, "%d", whiteBoard->messageLen[entryIndex]);
@@ -347,7 +381,7 @@ void * recieve(void * clientFD)
         //  - Can determine next action by the intial character (?, !, @)
         //  - Can determine the type of message attached (p, e, c)
         //  - Mixed with the length of args found from strtok
-        
+
         // -- Type of request
         char type = buffer[0];
 
@@ -364,7 +398,7 @@ void * recieve(void * clientFD)
         args = strtok(NULL,"\n");
 
         char messageLength[4];
-        char message[MAXCHARS]; 
+        char message[MAXCHARS];
 
         printf("Type: %c\n", type);
         printf("Nth-Message: %s\n", entry);
@@ -390,8 +424,8 @@ void * recieve(void * clientFD)
 
         if (type == '?') {
             readCRUD(clientFDHeap, entry);
-        } 
-        else if (type == '@') 
+        }
+        else if (type == '@')
         {
             updateCRUD(clientFDHeap, entry, message);
         }
@@ -408,22 +442,20 @@ int main(int argc, char **argv)
     sigtermViolationAction.sa_flags = 0;
     sigaction(SIGTERM, &sigtermViolationAction, 0);
 
-    whiteBoard = createWhiteBoard(WHITEBOARDSIZE);
-    
     // Create the clients list and initialize semaphores
     clientNodeHead = NULL;
 
     /*
         int sem_init(sem_t *sem, int pshared, unsigned int value);
 
-        The pshared argument indicates whether this semaphore is to be shared 
-        between the threads of a process, or between processes.   
+        The pshared argument indicates whether this semaphore is to be shared
+        between the threads of a process, or between processes.
 
-        If pshared has the value 0, then the semaphore is shared between the 
-        threads of a process, and should be located at some address that is 
-        visible to all threads (e.g., a global variable, or a variable 
+        If pshared has the value 0, then the semaphore is shared between the
+        threads of a process, and should be located at some address that is
+        visible to all threads (e.g., a global variable, or a variable
         allocated dynamically on the heap).
-    */ 
+    */
     sem_init(&clientLLSem, 0, 1);
     sem_init(&numClientsSem, 0, 1);
 
@@ -438,10 +470,19 @@ int main(int argc, char **argv)
     if (strcmp(argv[2], "-f") == 0)
     {
         //get or create the statefile
+        // loadWhiteBoard(argv[3]);
+        whiteBoard = createWhiteBoard(38);
     }
     else if (strcmp(argv[2], "-n") == 0)
     {
         // Start “fresh” with entries empty whiteboard entries.
+        int entries = atoi(argv[3]);
+        if (entries == 0)
+        {
+            printf("Invalid Argument: %s must be a valid entries number.", argv[3]);
+            exit(-1);
+        }
+        whiteBoard = createWhiteBoard(entries);
     }
     else
     {
@@ -463,6 +504,9 @@ int main(int argc, char **argv)
     // Make sure we are able to establish the socket before daemonizeProcess
     daemonizeProcess();
 
+    // If the server is full (MAXUSERS), then listenForConnections will return
+    // a -1, else 1 and we can go ahead and accept the connection
+    int addedConnection = 0;
     while(1)
     {
         listenForConnections();

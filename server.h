@@ -17,6 +17,9 @@
 #include <errno.h>
 #include <sys/user.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #define WHITEBOARDSIZE 38
 #define MAXCHARS 256
 #define MAXUSERS 10
@@ -60,7 +63,8 @@ pthread_t interruptThread;
 
 WhiteBoard * create(int numMessagesRequested);
 void sigtermViolationHandler(int signal_num);
-void savefile();
+void saveWhiteBoard();
+void loadWhiteBoard(char * stateFile);
 void connectionMessage(int * clientFD);
 void sendInfo(int *clientFD, char * response);
 void closeConnection();
@@ -73,10 +77,6 @@ void readCRUD(int* clientFD, char * entryNumStr);
 void updateCRUD(int * clientFD, char * entryNumStr, char * message);
 void deleteCRUD(int entryNum);
 void * recieve(void * arg);
-
-
-
-
 
 // ============================================================================
 // Modified linkedlist code from zentut.com
