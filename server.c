@@ -178,6 +178,7 @@ void loadWhiteBoard(char * stateFile)
                 if (isalpha(*bufferPointer))
                 {
                     type = *bufferPointer;
+                    break;
                 }
                 bufferPointer++;
             }
@@ -343,15 +344,21 @@ void acceptConnections()
 
 // TODO: Yet to include anything about encryption, the encryption currently
 // remains at 0 the whole time currently
-void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageLength, char * message)
+void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageLength, char * message, char encryptedState)
 {
     char buffer[2*MAXCHARS];
     bzero(buffer, 2*MAXCHARS);
-    // int * lenStore = calloc(1, sizeof(int));
-    // printf("INPUTMESSAGELEN: %d", messageLength);
-    // lenStore = messageLength;
-    whiteBoard->messageLen[entryIndex] = messageLength;
 
+    whiteBoard->messageLen[entryIndex] = messageLength;
+    printf("Encrypted: %c\n", encryptedState);
+    if (encryptedState == 'c')
+    {
+        whiteBoard->encrypted[entryIndex] = 1;
+    }
+    else 
+    {
+        whiteBoard->encrypted[entryIndex] = 0;
+    }
     char messageLengthStr[4];
     bzero(messageLengthStr, 4);
     sprintf(messageLengthStr, "%d", whiteBoard->messageLen[entryIndex]);
@@ -385,16 +392,22 @@ void readCRUD(int * clientFD, char * entryNumStr)
     sprintf(messageContents, whiteBoard->messages[entryIndex]);
     // printf("MessageContents: %s\n", messageContents);
 
+    char encrypted;
+    if (whiteBoard->encrypted[entryIndex] == 1)
+    {
+        encrypted = 'c';
+    }
+
     char buffer[2*MAXCHARS];
     bzero(buffer, 2*MAXCHARS);
 
-    sprintf(buffer, "!%sp%s\n%s\n", entryNumStr, messageLengthStr, messageContents);
+    sprintf(buffer, "!%s%c%s\n%s\n", entryNumStr, encrypted, messageLengthStr, messageContents);
 
     char * bufferPointer = buffer;
     sendInfo(clientFD, bufferPointer);
 }
 
-void updateCRUD(int * clientFD, char * entryNumStr, char * message)
+void updateCRUD(int * clientFD, char * entryNumStr, char * message, char encryptedState)
 {
     char buffer[2*MAXCHARS];
     bzero(buffer, 2*MAXCHARS);
@@ -423,7 +436,7 @@ void updateCRUD(int * clientFD, char * entryNumStr, char * message)
     }
 
     deleteCRUD(entryIndex);
-    createCRUD(clientFD, entryIndex, entryNumStr, messageLength, message);
+    createCRUD(clientFD, entryIndex, entryNumStr, messageLength, message, encryptedState);
 }
 
 void deleteCRUD(int entryIndex)
@@ -441,12 +454,16 @@ void * recieve(void * clientFD)
 {
     int * clientFDHeap = (int *) clientFD;
     char buffer[MAXCHARS];
-
+    char backUpBuffer[MAXCHARS];
     while(1)
     {
         bzero(buffer, MAXCHARS);
+        bzero(backUpBuffer, MAXCHARS);
 
         int n = read(*clientFDHeap, buffer, MAXCHARS - 1);
+        printf("Buffer: %s\n", buffer);
+        sprintf(backUpBuffer, "%s", buffer);
+
         if (n < 0)
         {
             perror("ERROR reading from socket");
@@ -502,7 +519,21 @@ void * recieve(void * clientFD)
         }
         else if (type == '@')
         {
-            updateCRUD(clientFDHeap, entry, message);
+            bufferPointer = backUpBuffer;
+            printf("This is the buffer: %s\n", backUpBuffer);
+            bufferPointer++;
+            char encryptedChar;
+            while (*bufferPointer) {
+                if (isalpha(*bufferPointer))
+                {
+                    printf("Found an alpha\n");
+                    encryptedChar = *bufferPointer;
+                    break;
+                }
+                bufferPointer++;
+            }
+            printf("This is the encrypted char %c\n", encryptedChar);
+            updateCRUD(clientFDHeap, entry, message, encryptedChar);
         }
     }
     return NULL;

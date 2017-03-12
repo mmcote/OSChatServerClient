@@ -5,6 +5,32 @@
 #include <malloc.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <pthread.h>
+
+#define MAXCHARS 256
+FILE * keyFile;
+int clientFD;
+struct sockaddr_in servAddr;
+struct hostent *server;
+char buffer[MAXCHARS];
+
+unsigned char key[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";//{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+unsigned char iv[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+char * encryptedText;
+int encryptedCount, decryptedCount = 0;
+
+char *base64encode (const void *b64_encode_this, int encode_this_many_bytes);
+char *base64decode (const void *b64_decode_this, int decode_this_many_bytes);
+void do_crypt(char* inputText);
+char *do_decrypt(char* text, int x, unsigned char *givenKey);
+unsigned char * encryptTextToBase64(char * inputText);
+char * decryptBase64ToText(unsigned char * inputBase64);
 
 void initializeServerData(int portNo);
 void createSocket();

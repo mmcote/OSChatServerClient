@@ -74,9 +74,9 @@ void createSocket();
 void bindSocket(int portNoRequested);
 void listenForConnections();
 void acceptConnections();
-void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageLength, char * message);
+void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageLength, char * message, char encryptedState);
 void readCRUD(int* clientFD, char * entryNumStr);
-void updateCRUD(int * clientFD, char * entryNumStr, char * message);
+void updateCRUD(int * clientFD, char * entryNumStr, char * message, char encryptedState);
 void deleteCRUD(int entryNum);
 void * recieve(void * arg);
 

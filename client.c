@@ -1,25 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <pthread.h>
-
-#define MAXCHARS 256
-
-int clientFD;
-struct sockaddr_in servAddr;
-struct hostent *server;
-char buffer[MAXCHARS];
-
-unsigned char key[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";//{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-unsigned char iv[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-char * encryptedText;
-int encryptedCount, decryptedCount = 0;
+#include "client.h"
 
 // ########################## BASE 64 ENCODE AND DECODE #######################################
 char *base64encode (const void *b64_encode_this, int encode_this_many_bytes){
@@ -88,7 +67,7 @@ void do_crypt(char* inputText){
 }
 
 // ########################## AES 256 DECODE #######################################
-char *do_decrypt(char* text, int x, unsigned char *givenKey){
+char *do_decrypt(char* text, int len, unsigned char *givenKey){
     unsigned char debuf[1024];
     int delen, remainingBytes = 0;
     
@@ -97,7 +76,7 @@ char *do_decrypt(char* text, int x, unsigned char *givenKey){
     EVP_CIPHER_CTX_init(&ctx);
     EVP_DecryptInit_ex(&ctx, EVP_aes_256_cbc(), NULL, givenKey, iv);
 
-    if(!EVP_DecryptUpdate(&ctx, debuf, &delen, text, x))
+    if(!EVP_DecryptUpdate(&ctx, debuf, &delen, text, len))
     {
         /* Error */
         return NULL;
@@ -142,19 +121,15 @@ char * decryptBase64ToText(unsigned char * inputBase64)
     int numBytesToDecode = strlen(inputBase64); //Number of bytes in string to base64 decode.
     char * base64_decoded = base64decode(inputBase64, numBytesToDecode);   //Base-64 decoding.
 
-    FILE * keyFile = fopen("key.txt","r");
-    if(!keyFile)
-    {
-      printf("\nError reading file\n");
-      exit(0);
-    }
-
     while (fgets(lineBuffer, len, keyFile) != NULL)
     {
       decodedKey = base64decode(lineBuffer, strlen(lineBuffer));
       resultingText = do_decrypt(base64_decoded, encryptedCount, decodedKey);
+      printf("This is the passed value %s\n", inputBase64);
+
       if (resultingText != NULL){
-        strncpy(outputText, resultingText, decryptedCount);
+        // strncpy(outputText, resultingText, decryptedCount);
+        strcpy(outputText, resultingText);
         printf("Key worked: \n%s\n", outputText);
         int textLen = strlen(outputText);
         char * text = calloc(textLen, sizeof(char));
@@ -214,13 +189,61 @@ void connectSocket()
 
 void recieve()
 {
+    char * args;
+
 	bzero(buffer,256);
 	int n = read(clientFD,buffer,255);
 	if (n < 0)
 	{
 	    perror("Error: reading from socket");
 	}
-	printf("%s\n",buffer);
+
+    if (buffer[0] == '!')
+    {
+        char * bufferPointer = buffer;
+        // Skip the !
+        bufferPointer++;
+        char type;
+        while (*bufferPointer) {
+            if (isalpha(*bufferPointer))
+            {
+                type = *bufferPointer;
+                break;
+            }
+            bufferPointer++;
+        }
+
+        // Only if it is encrypted do we parse the message
+        if (type == 'c')
+        {
+            // Parse Message out of response
+            bufferPointer = buffer;
+
+            // Skip the !
+            bufferPointer++;
+
+            // // Skip the type
+            args = strtok(bufferPointer,"pc");
+            printf("This is the args %s\n", args);
+            printf("This is the buffer %s\n", buffer);
+
+            // Grab the message length
+            args = strtok(NULL, "\n");
+            int messageLen = atoi(args);
+            printf("this is the messageLen %d\n", messageLen);
+            // if the message is not empty 
+            if (messageLen > 0)
+            {
+                args = strtok(NULL, "\n");
+                char * decryptedArg = decryptBase64ToText(args);
+                printf("CMPUT379 Whiteboard Encrypted v0\n");
+                printf("%s\n", decryptedArg);
+                bzero(buffer,256);
+                return;
+            }
+        }
+    }
+    printf("%s\n", buffer);
     bzero(buffer,256);
 }
 
@@ -242,18 +265,29 @@ void sendMessage()
     printf("Would you like to make a query (1) or update (2)?\n");
     
     char input[10];
-    bzero(input, 10);
-    fgets(input, 9, stdin);
-    if (input[0] == '1')
+    while (1)
     {
-        printf("You've selected to make a query.\n");
-        type = '?';
-    } 
-    else if (input[0] == '2')
-    {
-        printf("You've selected to make an update.\n");
-        type = '@';
+        bzero(input, 10);
+        fgets(input, 9, stdin);
+        if (input[0] == '1')
+        {
+            printf("You've selected to make a query.\n");
+            type = '?';
+            break;
+        } 
+        else if (input[0] == '2')
+        {
+            printf("You've selected to make an update.\n");
+            type = '@';
+            break;
+        }
+        else
+        {
+            printf("Please select a valid option.\n");
+            continue;
+        }
     }
+
     // 2. Enter Whiteboard Entry
     printf("Which entry would you like to access?\n");
     while(1)
@@ -280,8 +314,31 @@ void sendMessage()
         char buffer[MAXCHARS];
         bzero(buffer, MAXCHARS);
         fgets(buffer, MAXCHARS - 1, stdin);
-        int messageLen = strlen(buffer);
-        sprintf(writeBuffer, "%c%dp%d\n%s\n", type, entryNum, messageLen, buffer);
+
+        // This is where we will have the option to encrypt a outgoing update
+        printf("Would you like to encrypt the message? Yes (y) or No (n)\n");
+        fgets(input,9, stdin);
+        int messageLen = 0;
+        char encrypted = 'p';
+        if (input[0] == 'y')
+        {
+            // Encrypt the message
+            printf("Your message is being encrypted.\n");
+            char * bufferPointer = buffer;
+            unsigned char * base64Arg = encryptTextToBase64(bufferPointer);
+            messageLen = strlen(base64Arg);
+            bzero(buffer, MAXCHARS);
+            sprintf(buffer, "%s", base64Arg);
+            encrypted = 'c';
+        }
+        else if (input[0] == 'n')
+        {
+            // Proceed as per usual
+            printf("Your message is being sent without encryption.\n");
+            messageLen = strlen(buffer);
+        }
+        sprintf(writeBuffer, "%c%d%c%d\n%s\n", type, entryNum, encrypted, messageLen, buffer);
+
     }
     else
     {
@@ -299,6 +356,14 @@ void sendMessage()
 
 int main(int argc, char **argv) 
 {
+    keyFile = fopen("key.txt","r");
+
+    if(!keyFile)
+    {
+      perror("\nfopen\n");
+      exit(0);
+    }
+    
     if (argc < 4)
     {
         printf("Usage: %s hostname portnumber [keyfile]", argv[0]);
