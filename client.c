@@ -149,9 +149,9 @@ char * decryptBase64ToText(unsigned char * inputBase64)
     return NULL;
 }
 
-void initializeServerData(int portNo)
+void initializeServerData(int portNo, char localhost[])
 {
-	server = gethostbyname("localhost");
+	server = gethostbyname(localhost);
 	if (server == NULL)
 	{
 		perror ("Error: unable to get \"localhost\"");
@@ -356,14 +356,23 @@ void sendMessage()
 
 int main(int argc, char **argv) 
 {
-    keyFile = fopen("key.txt","r");
-
+    keyFile = fopen(argv[3],"r");
+	
     if(!keyFile)
     {
-      perror("\nfopen\n");
+      perror("File opening error.");
       exit(0);
     }
     
+	    
+    hostname = initializeServerData(argv[2], argv[1]);
+    if (!hostname)
+    {
+      perror("Invalid host name.");
+      exit(0);
+    }
+	
+	
     if (argc < 4)
     {
         printf("Usage: %s hostname portnumber [keyfile]", argv[0]);
