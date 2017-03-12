@@ -95,9 +95,9 @@ void daemonizeProcess()
     }
 
 	// close standard fds
-    close(STDIN_FILENO);
-    close(STDOUT_FILENO);
-    close(STDERR_FILENO);
+    // close(STDIN_FILENO);
+    // close(STDOUT_FILENO);
+    // close(STDERR_FILENO);
 }
 
 void saveWhiteBoard()
@@ -106,15 +106,29 @@ void saveWhiteBoard()
     if(!whiteBoardFile){
     	printf("cannot open whiteboard save file");
     }
-    fprintf(whiteBoardFile,"%d\n", numMessages);
+
     int i = 0;
+    int tempInt = 0;
     for(; i < numMessages; ++i)
-    {
-        fprintf(whiteBoardFile,"%d\n",whiteBoard->encrypted[i]);
-        fprintf(whiteBoardFile,"%d\n",whiteBoard->messageLen[i]);
-        if(whiteBoard->messageLen[i]!=0)
+    {   
+        // message
+        fprintf(whiteBoardFile,"!%d", i + 1);
+        if (whiteBoard->encrypted[i] == 0)
         {
-            fprintf(whiteBoardFile,"%s\n",whiteBoard->messages[i]);
+            fprintf(whiteBoardFile,"%c", 'p');
+        }
+        else
+        {
+            fprintf(whiteBoardFile,"%c", 'c');
+        }
+        
+        tempInt = whiteBoard->messageLen[i];
+        if (tempInt <= 0){
+            fprintf(whiteBoardFile, "%d\n\n", tempInt);
+        }
+        else if (tempInt > 0)
+        {
+            fprintf(whiteBoardFile, "%d\n%s\n", tempInt, whiteBoard->messages[i]);
         }
     }
     fflush(whiteBoardFile);
@@ -123,21 +137,82 @@ void saveWhiteBoard()
 
 void loadWhiteBoard(char * stateFile)
 {
-    // Instead of using the whiteBoardFile we are going to create a new
-    // whiteboard pointer as the assignment strictly says dump to the new
-    // whiteboard file
-
     FILE *priorWhiteBoardFile;
     priorWhiteBoardFile = fopen(stateFile, "r");
     if(!priorWhiteBoardFile){
     	printf("Cannot open stateFile given, %s", stateFile);
         exit(-1);
     }
-    int tempInt;
-    fscanf(priorWhiteBoardFile, "%d", &tempInt);
-    whiteBoard = createWhiteBoard(tempInt);
 
+    int len = MAXCHARS;
+    char buf[len];
+    bzero(buf, len);
+
+    // First we need to find out how many entries are in the statefile
+    int numEntries = 0;
+    while (fgets(&buf, len, priorWhiteBoardFile) != NULL)
+    {
+        if (buf[0] == '!')
+        {
+            numEntries++;
+        }
+    }
     fclose(priorWhiteBoardFile);
+    priorWhiteBoardFile = fopen(stateFile, "r");
+
+    whiteBoard = createWhiteBoard(numEntries);
+
+    char * bufferPointer = buf;
+    char * args;
+    // Here we just care about the type
+    char type;
+    bzero(buf, len);
+    int i = 0;
+    while (fgets(&buf, len, priorWhiteBoardFile) != NULL)
+    {
+        bufferPointer = buf;
+        if (*bufferPointer == '!')
+        {
+            bufferPointer++;
+            while (*bufferPointer) {
+                if (isalpha(*bufferPointer))
+                {
+                    type = *bufferPointer;
+                }
+                bufferPointer++;
+            }
+
+            if (type == 'c')
+            {
+                whiteBoard->encrypted[i] = 1;
+            }
+            else
+            {
+                whiteBoard->encrypted[i] = 0;
+            }
+
+            bufferPointer = buf;
+            bufferPointer++;
+
+            args = strtok(bufferPointer,"pc");
+            args = strtok(NULL, "\n");
+            int messageLen = atoi(args);
+            whiteBoard->messageLen[i] = messageLen;
+            if (whiteBoard->messageLen[i] > 0)
+            {
+                bzero(buf, len);
+                fgets(&buf, len, priorWhiteBoardFile);
+                // If this is just a message line then the whole line must be
+                // the message
+                whiteBoard->messages[i] = calloc(messageLen, sizeof(char));
+                memcpy(whiteBoard->messages[i], buf, messageLen*sizeof(char));
+                whiteBoard->messages[i][messageLen]='\0';
+
+            }
+            ++i;
+        }
+        bzero(buf, len);
+    }
 }
 
 void connectionMessage(int * clientFD)
@@ -470,8 +545,8 @@ int main(int argc, char **argv)
     if (strcmp(argv[2], "-f") == 0)
     {
         //get or create the statefile
-        // loadWhiteBoard(argv[3]);
-        whiteBoard = createWhiteBoard(38);
+        loadWhiteBoard(argv[3]);
+        // whiteBoard = createWhiteBoard(38);
     }
     else if (strcmp(argv[2], "-n") == 0)
     {
@@ -497,6 +572,8 @@ int main(int argc, char **argv)
         printf("Invalid Argument: %s must be a valid port number", argv[1]);
         exit(-1);
     }
+
+    // saveWhiteBoard();
 
     createSocket();
     bindSocket(portNo);

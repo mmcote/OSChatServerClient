@@ -20,6 +20,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <ctype.h>
+
 #define WHITEBOARDSIZE 38
 #define MAXCHARS 256
 #define MAXUSERS 10
