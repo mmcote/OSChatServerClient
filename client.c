@@ -41,6 +41,7 @@ void do_crypt(char* inputText){
     
     EVP_CIPHER_CTX ctx;
     EVP_CIPHER_CTX_init(&ctx);
+    printf("KEY: %s\n", key);
     EVP_EncryptInit_ex(&ctx, EVP_aes_256_cbc(), NULL, key, iv);
 
     if(!EVP_EncryptUpdate(&ctx, outbuf, &outlen, inputText, strlen(inputText)))
@@ -114,44 +115,71 @@ char * decryptBase64ToText(unsigned char * inputBase64)
     char * decodedKey;
     char * resultingText;
 
-
     bzero(outputText, len);
     bzero(lineBuffer, len);
-    
+
     int numBytesToDecode = strlen(inputBase64); //Number of bytes in string to base64 decode.
     char * base64_decoded = base64decode(inputBase64, numBytesToDecode);   //Base-64 decoding.
-
+    int lineLen;
     while (fgets(lineBuffer, len, keyFile) != NULL)
-    {
-      decodedKey = base64decode(lineBuffer, strlen(lineBuffer));
-      resultingText = do_decrypt(base64_decoded, encryptedCount, decodedKey);
-      printf("This is the passed value %s\n", inputBase64);
+    { 
+        lineLen = strlen(lineBuffer);
+        printf("This is the linelen decrypt: %d\n", lineLen);
+        decodedKey = base64decode(lineBuffer, lineLen);
+        int decodedKeyLen = strlen(decodedKey);
+        resultingText = do_decrypt(base64_decoded, decodedKeyLen, decodedKey);
+        printf("This is the key retrieved: %s\n", decodedKey);
+        printf("This is the passed value %s\n", inputBase64);
+        printf("This is the decodedKey %d\n", decodedKeyLen);
 
-      if (resultingText != NULL){
-        // strncpy(outputText, resultingText, decryptedCount);
-        strcpy(outputText, resultingText);
-        printf("Key worked: \n%s\n", outputText);
-        int textLen = strlen(outputText);
-        char * text = calloc(textLen, sizeof(char));
-        int i = 0;
-        for (; i < textLen; ++i)
-        {
-          text[i] = (char) outputText[i];
+        if (resultingText != NULL){
+            // strncpy(outputText, resultingText, decryptedCount);
+            strcpy(outputText, resultingText);
+            printf("Key worked: \n%s\n", outputText);
+            int textLen = strlen(outputText);
+            char * text = calloc(textLen, sizeof(char));
+            int i = 0;
+            for (; i < textLen; ++i)
+            {
+                text[i] = (char) outputText[i];
+            }
+            rewind(keyFile);
+            return text;
         }
-        return text;
-      }
-      else
-      {
-        printf("Key did not work\n");
-      }
-      bzero(lineBuffer, len);
+        else
+        {
+            printf("Key did not work\n");
+        }
+        bzero(lineBuffer, len);
     }
+    rewind(keyFile);
     return NULL;
 }
 
-void initializeServerData(int portNo)
+void setKey()
 {
-	server = gethostbyname("localhost");
+    int len = 1024;
+    char lineBuffer[len];
+    bzero(lineBuffer, len);
+
+    char * decodedKey;
+
+    if (fgets(lineBuffer, len, keyFile) != NULL)
+    {
+        int lineLen = strlen(lineBuffer);
+        printf("This is the original string length %d\n", lineLen);
+        decodedKey = base64decode(lineBuffer, lineLen);
+        printf("Decoded Key %s\n", decodedKey);
+        lineLen = strlen(decodedKey);
+        key = calloc(lineLen, sizeof(char));
+        key = decodedKey;
+    }
+    rewind(keyFile);
+}
+
+void initializeServerData(int portNo, char * hostname)
+{
+	server = gethostbyname(hostname);
 	if (server == NULL)
 	{
 		perror ("Error: unable to get \"localhost\"");
@@ -236,9 +264,16 @@ void recieve()
             {
                 args = strtok(NULL, "\n");
                 char * decryptedArg = decryptBase64ToText(args);
-                printf("CMPUT379 Whiteboard Encrypted v0\n");
-                printf("%s\n", decryptedArg);
-                bzero(buffer,256);
+                if (decryptedArg == NULL)
+                {
+                    printf("ERROR IN DECRYPTING");
+                }
+                else
+                {
+                    printf("CMPUT379 Whiteboard Encrypted v0\n");
+                    printf("%s\n", decryptedArg);
+                    bzero(buffer,256);
+                }
                 return;
             }
         }
@@ -247,10 +282,27 @@ void recieve()
     bzero(buffer,256);
 }
 
-void menu(char * writeBuffer)
+void initialMessage()
 {
+    char * args;
+
+	bzero(buffer, MAXCHARS);
     
+    int n = read(clientFD,buffer, MAXCHARS - 1);
+    printf("%s\n", buffer);
+
+	if (n < 0)
+	{
+	    perror("Error: reading from socket");
+	}
+    char * bufferPointer = buffer;
+    args = strtok(bufferPointer, "\n");
+    args = strtok(NULL, "\n");
+
+    numEntries = atoi(args);
 }
+
+
 
 // 3. Send and receive data, use the read() and write() system calls
 void sendMessage()
@@ -295,7 +347,7 @@ void sendMessage()
         bzero(input, 10);
         fgets(input, 9, stdin);
         entryNum = atoi(input);
-        if (entryNum == 0)
+        if (entryNum <= 0 || entryNum > numEntries)
         {
             printf("Invalid entry: Please enter a valid entry.\n");
         }
@@ -356,14 +408,14 @@ void sendMessage()
 
 int main(int argc, char **argv) 
 {
-    keyFile = fopen("key.txt","r");
+    keyFile = fopen(argv[3],"r");
 
     if(!keyFile)
     {
-      perror("\nfopen\n");
+      perror("Error: Unable to open the given keyfile.\n");
       exit(0);
     }
-    
+
     if (argc < 4)
     {
         printf("Usage: %s hostname portnumber [keyfile]", argv[0]);
@@ -377,12 +429,14 @@ int main(int argc, char **argv)
         exit(-1);
     }
 
+    setKey();
+
 	createSocket();
-	initializeServerData(portNo);
+	initializeServerData(portNo, argv[1]);
     connectSocket();
 
     // This recieve is just to take in the initial welcome message
-    recieve();
+    initialMessage();
 
     // The client is continually requesting from the server
     while(1)

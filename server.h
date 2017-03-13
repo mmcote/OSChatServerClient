@@ -60,6 +60,7 @@ int serverFD, clientFD;
 
 sem_t clientLLSem;
 sem_t numClientsSem;
+sem_t whiteBoardSem;
 
 pthread_t interruptThread;
 

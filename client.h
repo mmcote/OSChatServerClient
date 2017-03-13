@@ -19,9 +19,11 @@ int clientFD;
 struct sockaddr_in servAddr;
 struct hostent *server;
 char buffer[MAXCHARS];
+int numEntries;
 
-unsigned char key[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";//{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+unsigned char * key; 
 unsigned char iv[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+
 char * encryptedText;
 int encryptedCount, decryptedCount = 0;
 
@@ -31,8 +33,8 @@ void do_crypt(char* inputText);
 char *do_decrypt(char* text, int x, unsigned char *givenKey);
 unsigned char * encryptTextToBase64(char * inputText);
 char * decryptBase64ToText(unsigned char * inputBase64);
-
-void initializeServerData(int portNo);
+void setKey();
+void initializeServerData(int portNo, char * hostname);
 void createSocket();
 void connectSocket();
 void recieve();
