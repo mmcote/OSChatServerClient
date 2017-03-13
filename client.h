@@ -1,3 +1,6 @@
+#ifndef CLIENT_H
+#define CLIENT_H
+
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
@@ -12,33 +15,20 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <pthread.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-
 #include <sys/select.h>
 #include <sys/time.h>
-#include <pthread.h>
 #include <semaphore.h>
-
 #include <signal.h>
 #include <errno.h>
 #include <sys/user.h>
-
-#include <sys/types.h>
 #include <sys/stat.h>
-
 #include <ctype.h>
 
-#define MAXCHARS 256
+#define MAXCHARS 1024
+
 FILE * keyFile;
+int keyFileGiven;
+
 int clientFD;
 struct sockaddr_in servAddr;
 struct hostent *server;
@@ -66,3 +56,4 @@ void menu(char * writeBuffer);
 void sendMessage();
 void sigIntViolationHandler(int signal_num);
 
+#endif

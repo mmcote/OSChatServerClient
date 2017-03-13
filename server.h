@@ -22,9 +22,8 @@
 
 #include <ctype.h>
 
-#define WHITEBOARDSIZE 38
-#define MAXCHARS 256
-#define MAXUSERS 10
+#define MAXCHARS 1024
+#define MAXUSERS 100
 
 // ClientNode struct used in a linkedlist
 // to maintain all client information
@@ -56,7 +55,7 @@ FILE *logFile = NULL;
 FILE *whiteBoardFile = NULL;
 
 struct sockaddr_in serverAddr;
-int serverFD, clientFD;
+int serverFD;
 
 sem_t clientLLSem;
 sem_t numClientsSem;

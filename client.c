@@ -168,9 +168,7 @@ void setKey()
     if (fgets(lineBuffer, len, keyFile) != NULL)
     {
         int lineLen = strlen(lineBuffer);
-        printf("This is the original string length %d\n", lineLen);
         decodedKey = base64decode(lineBuffer, lineLen);
-        printf("Decoded Key %s\n", decodedKey);
         lineLen = strlen(decodedKey);
         key = calloc(lineLen, sizeof(char));
         key = decodedKey;
@@ -183,8 +181,8 @@ void initializeServerData(int portNo, char * hostname)
 	server = gethostbyname(hostname);
 	if (server == NULL)
 	{
-		perror ("Error: unable to get \"localhost\"");
-        exit (1);
+		perror ("Error: unable to get \"hostname\"");
+        exit (-1);
 	}
 
 	// Initialize the sockaddr_in struct
@@ -235,15 +233,19 @@ void recieveExit()
 void recieve()
 {
     char * args;
+    char bufferCopy[MAXCHARS];
+	bzero(buffer,MAXCHARS);
+    bzero(bufferCopy,MAXCHARS);
 
-	bzero(buffer,256);
-	int n = read(clientFD,buffer,255);
+	int n = read(clientFD, buffer, MAXCHARS - 1);
 	if (n < 0)
 	{
 	    perror("Error: reading from socket");
 	}
+    printf("Buffer %s\n", buffer);
+    sprintf(bufferCopy, "%s", buffer);
 
-    if (buffer[0] == '!')
+    if (buffer[0] == '!' && keyFileGiven == 0)
     {
         char * bufferPointer = buffer;
         // Skip the !
@@ -259,7 +261,7 @@ void recieve()
         }
 
         // Only if it is encrypted do we parse the message
-        if (type == 'c')
+        if (type == 'c' && keyFileGiven == 0)
         {
             // Parse Message out of response
             bufferPointer = buffer;
@@ -289,14 +291,14 @@ void recieve()
                 {
                     printf("CMPUT379 Whiteboard Encrypted v0\n");
                     printf("%s\n", decryptedArg);
-                    bzero(buffer,256);
+                    bzero(buffer,MAXCHARS);
                 }
                 return;
             }
         }
     }
-    printf("%s\n", buffer);
-    bzero(buffer,256);
+    printf("%s", bufferCopy);
+    bzero(buffer, MAXCHARS);
 }
 
 void initialMessage()
@@ -389,15 +391,24 @@ void sendMessage()
     {
         // 3. Enter Message if necessary
         printf("Please enter your new whiteboard message.\n");
-
+        int messageLen = 0;
         char buffer[MAXCHARS];
         bzero(buffer, MAXCHARS);
         fgets(buffer, MAXCHARS - 1, stdin);
+        messageLen = strlen(buffer) - 1;
+        printf("MessageLen %d\n", messageLen);
+        if (keyFileGiven == 0 && messageLen != 0)
+        {
+            // This is where we will have the option to encrypt a outgoing update
+            printf("Would you like to encrypt the message? Yes (y) or No (n)\n");
+            fgets(input,9, stdin);
+        }
+        else
+        {
+            input[0] = 'n';
+        }
 
-        // This is where we will have the option to encrypt a outgoing update
-        printf("Would you like to encrypt the message? Yes (y) or No (n)\n");
-        fgets(input,9, stdin);
-        int messageLen = 0;
+        messageLen = 0;
         char encrypted = 'p';
         if (input[0] == 'y')
         {
@@ -463,16 +474,26 @@ int main(int argc, char **argv)
     sigemptyset(&sigIntViolationAction.sa_mask);
     sigIntViolationAction.sa_flags = 0;
     sigaction(SIGINT, &sigIntViolationAction, 0);
-
-    keyFile = fopen(argv[3],"r");
-
-    if(!keyFile)
+    keyFileGiven = 0;
+    if (argv[3] != NULL)
     {
-      perror("Error: Unable to open the given keyfile.\n");
-      exit(0);
+        keyFile = fopen(argv[3],"r");
+
+        if(!keyFile)
+        {
+            perror("Error: Unable to open the given keyfile.\n");
+            exit(0);
+        }
+        setKey();
+
+    }
+    else
+    {
+        keyFileGiven = 1;
+        printf("No key file given. Therefore decryption and encryption are disabled.\n");
     }
 
-    if (argc < 4)
+    if (argc < 3)
     {
         printf("Usage: %s hostname portnumber [keyfile]", argv[0]);
 		exit(-1);
@@ -484,8 +505,6 @@ int main(int argc, char **argv)
         printf("Invalid Argument: %s must be a valid port number", argv[1]);
         exit(-1);
     }
-
-    setKey();
 
 	createSocket();
 	initializeServerData(portNo, argv[1]);

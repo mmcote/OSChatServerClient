@@ -21,38 +21,52 @@ WhiteBoard * createWhiteBoard(int numMessagesRequested)
     return templateWhiteBoard;
 }
 
+void cleanWhiteBoard()
+{
+    int i = 0;
+    for (; i < whiteBoard->numMessages; ++i)
+    {
+        free(whiteBoard->messages[i]);
+        free(whiteBoard->encrypted[i]);
+        free(whiteBoard->messageLen[i]);
+    }
+    free(whiteBoard->messages);
+    free(whiteBoard->encrypted);
+    free(whiteBoard->messageLen);
+
+    whiteBoard = createWhiteBoard(whiteBoard->numMessages);
+}
+
 void disconnectUsers()
 {
-    printf("clientNodeHead\n");
-    if (clientNodeHead == NULL)
-    {
-        printf("clientNodeHead is null\n");
-    }
+    int n;
     while (clientNodeHead != NULL)
     {
-        printf("In clientNodeHead termination\n");
         fprintf(logFile, "%d\n", *clientNodeHead->fd);
 
         // Currently the clients only have one thread where
         // they are sending so they cannot listen all the time
         // hense they will be unaware of being disconnected
 
-        printf("This is time to close the pthread\n");
+        n = close(*clientNodeHead->fd);
+        if (n < 0)
+        {
+            printf("This did not work");
+        }
         pthread_exit(*clientNodeHead->threadID);
+
         clientNodeHead = remove_front(clientNodeHead);
     }
 }
 
 void sigtermViolationHandler(int signal_num)
 {
-    printf("In the sigterm handler %d\n", signal_num);
-    // fprintf(logFile, "Sigterm");
-    // disconnectUsers();
     saveWhiteBoard();
     closeConnection();
     fclose(logFile);
+    
 
-    exit(-1);
+    exit(0);
 }
 
 void daemonizeProcess()
@@ -90,12 +104,12 @@ void daemonizeProcess()
     }
 
     // create new process group -- don't want to look like an orphan
-    // sid = setsid();
-    // if(sid < 0)
-    // {
-    //     fprintf(logFile, "cannot create new process group");
-    //     exit(1);
-    // }
+    sid = setsid();
+    if(sid < 0)
+    {
+        fprintf(logFile, "cannot create new process group");
+        exit(1);
+    }
 
     /* Change the current working directory */
     if ((chdir("/")) < 0) {
@@ -109,11 +123,13 @@ void daemonizeProcess()
     // close(STDERR_FILENO);
 }
 
+// --DONE
 void saveWhiteBoard()
 {
     int numMessages = whiteBoard->numMessages;
     if(!whiteBoardFile){
-    	printf("cannot open whiteboard save file");
+    	printf("Error: Cannot open whiteboard save file");
+        exit(-1);
     }
 
     int i = 0;
@@ -144,6 +160,7 @@ void saveWhiteBoard()
     fclose(whiteBoardFile);
 }
 
+// --DONE
 void loadWhiteBoard(char * stateFile)
 {
     FILE *priorWhiteBoardFile;
@@ -161,21 +178,25 @@ void loadWhiteBoard(char * stateFile)
     int numEntries = 0;
     while (fgets(&buf, len, priorWhiteBoardFile) != NULL)
     {
+        // An entry is easily spotted by the !
         if (buf[0] == '!')
         {
             numEntries++;
         }
     }
-    fclose(priorWhiteBoardFile);
-    priorWhiteBoardFile = fopen(stateFile, "r");
+    // fclose(priorWhiteBoardFile);
+    // priorWhiteBoardFile = fopen(stateFile, "r");
+    rewind(priorWhiteBoardFile);
 
     whiteBoard = createWhiteBoard(numEntries);
 
     char * bufferPointer = buf;
     char * args;
+
     // Here we just care about the type
     char type;
     bzero(buf, len);
+
     int i = 0;
     while (fgets(&buf, len, priorWhiteBoardFile) != NULL)
     {
@@ -206,18 +227,19 @@ void loadWhiteBoard(char * stateFile)
 
             args = strtok(bufferPointer,"pc");
             args = strtok(NULL, "\n");
+
             int messageLen = atoi(args);
             whiteBoard->messageLen[i] = messageLen;
+            
             if (whiteBoard->messageLen[i] > 0)
             {
                 bzero(buf, len);
                 fgets(&buf, len, priorWhiteBoardFile);
-                // If this is just a message line then the whole line must be
-                // the message
+
+                // If this is just a message line then the whole line must be the message
                 whiteBoard->messages[i] = calloc(messageLen, sizeof(char));
                 memcpy(whiteBoard->messages[i], buf, messageLen*sizeof(char));
                 whiteBoard->messages[i][messageLen]='\0';
-
             }
             ++i;
         }
@@ -225,6 +247,7 @@ void loadWhiteBoard(char * stateFile)
     }
 }
 
+// --DONE
 void connectionMessage(int * clientFD)
 {
     // Create the connection message.
@@ -237,12 +260,14 @@ void connectionMessage(int * clientFD)
     send(*clientFD, body, strlen(body), 0);
 }
 
+// --DONE
 void maxClientsMessage(int clientFD)
 {
     char header[32] = "Too many clients on the CMPUT379 Whiteboard Server v0\nPlease come back later.\n";
     send(clientFD, header, strlen(header), 0);
 }
 
+// --DONE
 void sendInfo(int * clientFD, char * response)
 {
     int n = write(*clientFD, response, strlen(response));
@@ -252,6 +277,7 @@ void sendInfo(int * clientFD, char * response)
     }
 }
 
+// --DONE
 void closeConnection()
 {
     close(serverFD);
@@ -308,7 +334,7 @@ void acceptConnections()
 
     // returns  a  new  file  descriptor referring to the client socket
     // (Creating a new socket for that specific client)
-    clientFD = accept (serverFD, (struct sockaddr*) &clientAddr, &clientLength);
+    int clientFD = accept (serverFD, (struct sockaddr*) &clientAddr, &clientLength);
     fprintf(logFile, "This is the next clientFD: %d\n", clientFD);
     if (clientFD < 0)
     {
@@ -348,7 +374,7 @@ void acceptConnections()
     sem_post(&clientLLSem);
 
     pthread_create(currentCLientNode->threadID, NULL, recieve, (void *) currentCLientNode->fd);
-    printf("clientFD: %d\n", currentCLientNode->fd);
+    printf("clientFD: %d\n", *currentCLientNode->fd);
     connectionMessage(currentCLientNode->fd);
 }
 
@@ -407,10 +433,14 @@ void readCRUD(int * clientFD, char * entryNumStr)
     {
         encrypted = 'c';
     }
+    else
+    {
+        encrypted = 'p';
+    }
 
     char buffer[2*MAXCHARS];
     bzero(buffer, 2*MAXCHARS);
-
+    printf("This is the response sent: !%s%c%s\n%s\n", entryNumStr, encrypted, messageLengthStr, messageContents);
     sprintf(buffer, "!%s%c%s\n%s\n", entryNumStr, encrypted, messageLengthStr, messageContents);
 
     char * bufferPointer = buffer;
@@ -423,7 +453,7 @@ void updateCRUD(int * clientFD, char * entryNumStr, char * message, char encrypt
     bzero(buffer, 2*MAXCHARS);
 
     int entryIndex = atoi(entryNumStr);
-    if (entryIndex < 1 || entryIndex > WHITEBOARDSIZE)
+    if (entryIndex < 1 || entryIndex > whiteBoard->numMessages)
     {
         // !47e14\nNo such entry!\n
         sprintf(buffer, "!%se%d\nNo such entry!\n", entryNumStr, 14);
@@ -471,12 +501,12 @@ void * recieve(void * clientFD)
         bzero(backUpBuffer, MAXCHARS);
 
         int n = read(*clientFDHeap, buffer, MAXCHARS - 1);
-        printf("Buffer: %s\n", buffer);
         sprintf(backUpBuffer, "%s", buffer);
 
         if (n < 0)
         {
             perror("ERROR reading from socket");
+            return NULL;
         }
 
         // Need to parse query to identify requested action
@@ -491,7 +521,7 @@ void * recieve(void * clientFD)
             char logOutBuffer[MAXCHARS];
             bzero(logOutBuffer, MAXCHARS);
             sprintf(logOutBuffer, "%s", "#Thank you for stopping by!");
-            printf("CliendFD %d, is leaving.\n", *clientFDHeap);
+            printf("\nCliendFD %d, is leaving.\n", *clientFDHeap);
             write(*clientFDHeap, logOutBuffer, strlen(logOutBuffer));
 
             close(clientFD);
@@ -526,16 +556,11 @@ void * recieve(void * clientFD)
         char messageLength[4];
         char message[MAXCHARS];
 
-        printf("Type: %c\n", type);
-        printf("Nth-Message: %s\n", entry);
-
         if (type != '?')
         {
             bzero(messageLength, 4);
             sprintf (messageLength, args);
             args = strtok(NULL,"\n");
-
-            printf("MessageLenth: %s\n", messageLength);
 
             // This atoi is safe without checking as the client UI (made by the
             // developer) will only allow numbers >= 0.
@@ -543,8 +568,6 @@ void * recieve(void * clientFD)
             {
                 bzero(message, MAXCHARS);
                 sprintf (message, args);
-
-                printf("Message: %s\n", message);
             }
         }
 
@@ -559,19 +582,16 @@ void * recieve(void * clientFD)
         else if (type == '@')
         {
             bufferPointer = backUpBuffer;
-            printf("This is the buffer: %s\n", backUpBuffer);
             bufferPointer++;
             char encryptedChar;
             while (*bufferPointer) {
                 if (isalpha(*bufferPointer))
                 {
-                    printf("Found an alpha\n");
                     encryptedChar = *bufferPointer;
                     break;
                 }
                 bufferPointer++;
             }
-            printf("This is the encrypted char %c\n", encryptedChar);
             updateCRUD(clientFDHeap, entry, message, encryptedChar);
         }
         sem_post(&whiteBoardSem);
