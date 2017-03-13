@@ -216,6 +216,22 @@ void connectSocket()
 	}
 }
 
+void recieveExit()
+{
+    bzero(buffer,256);
+	int n = read(clientFD,buffer,255);
+	if (n < 0)
+	{
+	    perror("Error: reading from socket");
+	}
+    else
+    {
+        printf("Error: Unable to parse server close message.\n");
+        exit(-1);
+    }
+    exit(0);
+}
+
 void recieve()
 {
     char * args;
@@ -318,10 +334,15 @@ void sendMessage()
     printf("Would you like to make a query (1) or update (2)?\n");
     
     char input[10];
+    char exitArray[10];
+    bzero(exitArray, 10);
+    strcpy(exitArray, "exit");
+
     while (1)
     {
         bzero(input, 10);
         fgets(input, 9, stdin);
+        printf("Input: %s\n", input);
         if (input[0] == '1')
         {
             printf("You've selected to make a query.\n");
@@ -334,8 +355,13 @@ void sendMessage()
             type = '@';
             break;
         }
+        else if (strncmp(input, exitArray, 4) == 0)
+        {
+            userLogout();
+        }
         else
         {
+            // printf("This is the starting char, %c\n", input[0]);
             printf("Please select a valid option.\n");
             continue;
         }
@@ -407,8 +433,37 @@ void sendMessage()
     recieve();
 }
 
+void userLogout()
+{
+    char writeBuffer[32];
+    bzero(writeBuffer, 32);
+    sprintf(writeBuffer, "&000UserLogout");
+    int n = write(clientFD, writeBuffer, strlen(writeBuffer));
+	if (n < 0)
+	{
+	    perror("Error: writing to socket");
+	}
+    exit(0);
+}
+
+
+void sigIntViolationHandler(int signal_num)
+{
+    printf("In the sigInt handler\n");
+    userLogout();
+    // close(serverFD);
+    //exit(-1);
+}
+
 int main(int argc, char **argv) 
 {
+    // create sigaction for handling SIGSEGV
+    struct sigaction sigIntViolationAction;
+    sigIntViolationAction.sa_handler = sigIntViolationHandler;
+    sigemptyset(&sigIntViolationAction.sa_mask);
+    sigIntViolationAction.sa_flags = 0;
+    sigaction(SIGINT, &sigIntViolationAction, 0);
+
     keyFile = fopen(argv[3],"r");
 
     if(!keyFile)
