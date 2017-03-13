@@ -1,3 +1,7 @@
+(name ccid)
+(Michael Cote mmcote)
+(Brad Hanasyk hanasyk1)
+
 Server Instructions:
 ===============================================================================
 StartUp

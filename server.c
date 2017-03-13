@@ -118,9 +118,9 @@ void daemonizeProcess()
     }
 
 	// close standard fds
-    // close(STDIN_FILENO);
-    // close(STDOUT_FILENO);
-    // close(STDERR_FILENO);
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
 }
 
 // --DONE
@@ -374,7 +374,7 @@ void acceptConnections()
     sem_post(&clientLLSem);
 
     pthread_create(currentCLientNode->threadID, NULL, recieve, (void *) currentCLientNode->fd);
-    printf("clientFD: %d\n", *currentCLientNode->fd);
+    // printf("clientFD: %d\n", *currentCLientNode->fd);
     connectionMessage(currentCLientNode->fd);
 }
 
@@ -402,8 +402,6 @@ void createCRUD(int * clientFD, int entryIndex, char * entryNumStr, int messageL
     whiteBoard->messages[entryIndex] = calloc(messageLength, sizeof(char));
     memcpy(whiteBoard->messages[entryIndex], message, messageLength*sizeof(char));
     whiteBoard->messages[entryIndex][messageLength]='\0';
-
-    printf("Message: %s\n", message);
 
     // write the appropriate response
     // !12e0\n\n
@@ -440,7 +438,6 @@ void readCRUD(int * clientFD, char * entryNumStr)
 
     char buffer[2*MAXCHARS];
     bzero(buffer, 2*MAXCHARS);
-    printf("This is the response sent: !%s%c%s\n%s\n", entryNumStr, encrypted, messageLengthStr, messageContents);
     sprintf(buffer, "!%s%c%s\n%s\n", entryNumStr, encrypted, messageLengthStr, messageContents);
 
     char * bufferPointer = buffer;
@@ -518,11 +515,10 @@ void * recieve(void * clientFD)
         char type = buffer[0];
         if (type == '&')
         {
-            char logOutBuffer[MAXCHARS];
-            bzero(logOutBuffer, MAXCHARS);
-            sprintf(logOutBuffer, "%s", "#Thank you for stopping by!");
-            printf("\nCliendFD %d, is leaving.\n", *clientFDHeap);
-            write(*clientFDHeap, logOutBuffer, strlen(logOutBuffer));
+            // char logOutBuffer[MAXCHARS];
+            // bzero(logOutBuffer, MAXCHARS);
+            // sprintf(logOutBuffer, "%s", "#Thank you for stopping by!");
+            // write(*clientFDHeap, logOutBuffer, strlen(logOutBuffer));
 
             close(clientFD);
             return;
