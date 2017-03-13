@@ -1,4 +1,6 @@
 #include "server.h"
+//3, 166, 495
+int numberofentries;
 
 WhiteBoard * createWhiteBoard(int numMessagesRequested)
 {
@@ -161,6 +163,7 @@ void loadWhiteBoard(char * stateFile)
     priorWhiteBoardFile = fopen(stateFile, "r");
 
     whiteBoard = createWhiteBoard(numEntries);
+    numberofentries = numEntries;
 
     char * bufferPointer = buf;
     char * args;
@@ -467,6 +470,7 @@ void * recieve(void * clientFD)
         if (n < 0)
         {
             perror("ERROR reading from socket");
+	    exit(1);
         }
 
         // Need to parse query to identify requested action
@@ -488,6 +492,10 @@ void * recieve(void * clientFD)
         bzero(entry, 4);
         sprintf (entry, args);
         args = strtok(NULL,"\n");
+	    
+	if (entry > numberofentries){
+		perror("Requested entry number is out of the bounds of the whiteboard.);
+		       }
 
         char messageLength[4];
         char message[MAXCHARS];
@@ -582,13 +590,14 @@ int main(int argc, char **argv)
     else if (strcmp(argv[2], "-n") == 0)
     {
         // Start “fresh” with entries empty whiteboard entries.
-        int entries = atoi(argv[3]);
+        int entries = atoi(argv[3])
         if (entries == 0)
         {
             printf("Invalid Argument: %s must be a valid entries number.", argv[3]);
             exit(-1);
         }
         whiteBoard = createWhiteBoard(entries);
+	numberofentries = entries;
     }
     else
     {
