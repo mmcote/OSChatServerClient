@@ -23,21 +23,30 @@ WhiteBoard * createWhiteBoard(int numMessagesRequested)
 
 void disconnectUsers()
 {
+    printf("clientNodeHead\n");
+    if (clientNodeHead == NULL)
+    {
+        printf("clientNodeHead is null\n");
+    }
     while (clientNodeHead != NULL)
     {
+        printf("In clientNodeHead termination\n");
         fprintf(logFile, "%d\n", *clientNodeHead->fd);
 
         // Currently the clients only have one thread where
         // they are sending so they cannot listen all the time
         // hense they will be unaware of being disconnected
 
-        close(*clientNodeHead->fd);
+        printf("This is time to close the pthread\n");
+        pthread_exit(*clientNodeHead->threadID);
         clientNodeHead = remove_front(clientNodeHead);
     }
 }
 
 void sigtermViolationHandler(int signal_num)
 {
+    printf("In the sigterm handler\n");
+    fprintf(logFile, "Sigterm");
     disconnectUsers();
     saveWhiteBoard();
     closeConnection();
@@ -81,12 +90,12 @@ void daemonizeProcess()
     }
 
     // create new process group -- don't want to look like an orphan
-    sid = setsid();
-    if(sid < 0)
-    {
-        fprintf(logFile, "cannot create new process group");
-        exit(1);
-    }
+    // sid = setsid();
+    // if(sid < 0)
+    // {
+    //     fprintf(logFile, "cannot create new process group");
+    //     exit(1);
+    // }
 
     /* Change the current working directory */
     if ((chdir("/")) < 0) {
@@ -230,7 +239,8 @@ void connectionMessage(int * clientFD)
 
 void maxClientsMessage(int clientFD)
 {
-
+    char header[32] = "Too many clients on the CMPUT379 Whiteboard Server v0\nPlease come back later.\n";
+    send(clientFD, header, strlen(header), 0);
 }
 
 void sendInfo(int * clientFD, char * response)
@@ -238,7 +248,7 @@ void sendInfo(int * clientFD, char * response)
     int n = write(*clientFD, response, strlen(response));
     if (n < 0)
     {
-        perror("ERROR writing to socket");
+        perror("Error writing to socket");
     }
 }
 
@@ -489,6 +499,20 @@ void * recieve(void * clientFD)
         sprintf (entry, args);
         args = strtok(NULL,"\n");
 
+        int entryNum = atoi(entry);
+        if (entryNum > whiteBoard->numMessages || entryNum < 0) {
+            // TODO: Proper error message
+            char errorBuffer[MAXCHARS];
+            bzero(errorBuffer, MAXCHARS);
+            sprintf(errorBuffer, "You are trying to write to an invalid entry number.");
+            int errorLen = strlen(errorBuffer);
+            char sendBuffer[MAXCHARS];
+            bzero(sendBuffer, MAXCHARS);
+            sprintf(sendBuffer, "!%se%d\n%s\n", entry, errorLen, errorBuffer);
+            sendInfo(clientFDHeap, sendBuffer);
+            continue;
+        }
+
         char messageLength[4];
         char message[MAXCHARS];
 
@@ -514,6 +538,11 @@ void * recieve(void * clientFD)
             }
         }
 
+        // Only allow one person to read or write the whiteboard at a time
+        // Simple solution, could allow readers to go concurrently if if no
+        // one is writing, but then writer has to wait for readers to leave
+        // therefore first come first serve.
+        sem_wait(&whiteBoardSem);
         if (type == '?') {
             readCRUD(clientFDHeap, entry);
         }
@@ -535,6 +564,7 @@ void * recieve(void * clientFD)
             printf("This is the encrypted char %c\n", encryptedChar);
             updateCRUD(clientFDHeap, entry, message, encryptedChar);
         }
+        sem_post(&whiteBoardSem);
     }
     return NULL;
 }
@@ -564,6 +594,7 @@ int main(int argc, char **argv)
     */
     sem_init(&clientLLSem, 0, 1);
     sem_init(&numClientsSem, 0, 1);
+    sem_init(&whiteBoardSem, 0, 1);
 
     // Usage information
     if (argc < 4)
@@ -577,7 +608,6 @@ int main(int argc, char **argv)
     {
         //get or create the statefile
         loadWhiteBoard(argv[3]);
-        // whiteBoard = createWhiteBoard(38);
     }
     else if (strcmp(argv[2], "-n") == 0)
     {
