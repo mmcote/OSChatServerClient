@@ -13,6 +13,30 @@
 #include <netdb.h>
 #include <pthread.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#include <sys/select.h>
+#include <sys/time.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+#include <signal.h>
+#include <errno.h>
+#include <sys/user.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <ctype.h>
+
 #define MAXCHARS 256
 FILE * keyFile;
 int clientFD;
@@ -40,3 +64,5 @@ void connectSocket();
 void recieve();
 void menu(char * writeBuffer);
 void sendMessage();
+void sigIntViolationHandler(int signal_num);
+

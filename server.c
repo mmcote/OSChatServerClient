@@ -45,9 +45,9 @@ void disconnectUsers()
 
 void sigtermViolationHandler(int signal_num)
 {
-    printf("In the sigterm handler\n");
-    fprintf(logFile, "Sigterm");
-    disconnectUsers();
+    printf("In the sigterm handler %d\n", signal_num);
+    // fprintf(logFile, "Sigterm");
+    // disconnectUsers();
     saveWhiteBoard();
     closeConnection();
     fclose(logFile);
@@ -486,7 +486,17 @@ void * recieve(void * clientFD)
 
         // -- Type of request
         char type = buffer[0];
+        if (type == '&')
+        {
+            char logOutBuffer[MAXCHARS];
+            bzero(logOutBuffer, MAXCHARS);
+            sprintf(logOutBuffer, "%s", "#Thank you for stopping by!");
+            printf("CliendFD %d, is leaving.\n", *clientFDHeap);
+            write(*clientFDHeap, logOutBuffer, strlen(logOutBuffer));
 
+            close(clientFD);
+            return;
+        }
         // Skip the type
         char * bufferPointer = buffer;
         bufferPointer++;
@@ -571,7 +581,7 @@ void * recieve(void * clientFD)
 
 int main(int argc, char **argv)
 {
-    // create sigaction for handling SIGSEGV
+    // create sigaction for handling SIGTERM
     struct sigaction sigtermViolationAction;
     sigtermViolationAction.sa_handler = sigtermViolationHandler;
     sigemptyset(&sigtermViolationAction.sa_mask);
