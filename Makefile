@@ -3,10 +3,10 @@ all: client.o server.o
 CC_Object = gcc -w 
 
 client.o : client.c
-	$(CC_Object) client.c -o client -l crypto
+	$(CC_Object) client.c -o wbc379 -l crypto
 
 server.o : server.c 
-	$(CC_Object) server.c -o server -l pthread
+	$(CC_Object) server.c -o wbs379 -l pthread
 
 clean: 
 	rm *.o -rf $(MAKE) clean
